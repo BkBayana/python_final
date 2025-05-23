@@ -4,19 +4,19 @@ from flask import Flask, request, render_template
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import StandardScaler
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, roc_curve, roc_auc_score
 import matplotlib.pyplot as plt
 import seaborn as sns
 import os
 
 app = Flask(__name__)
 
+# Загрузка и подготовка данных
 df = pd.read_csv("heart.csv")
 X = df.drop("HeartDisease", axis=1)
 y = df["HeartDisease"]
 X = pd.get_dummies(X, drop_first=True)
 model_columns = X.columns
-
 
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 scaler = StandardScaler()
@@ -25,12 +25,12 @@ X_test_scaled = scaler.transform(X_test)
 model = LogisticRegression()
 model.fit(X_train_scaled, y_train)
 
-
+# Оценка точности
 y_pred = model.predict(X_test_scaled)
 accuracy = accuracy_score(y_test, y_pred)
 print(f"Model accuracy on test set: {accuracy * 100:.2f}%")
 
-# Create a plot only once
+# 📊 Функция для графика распределения по возрасту
 def create_plot():
     plt.figure(figsize=(10, 6))
     sns.histplot(data=df, x='Age', hue='HeartDisease', multiple='stack', bins=30)
@@ -42,14 +42,34 @@ def create_plot():
     plt.savefig("static/plot.png")
     plt.close()
 
-create_plot()
+# 📈 Функция для построения ROC-кривой
+def create_roc_curve():
+    y_probs = model.predict_proba(X_test_scaled)[:, 1]
+    fpr, tpr, _ = roc_curve(y_test, y_probs)
+    auc = roc_auc_score(y_test, y_probs)
 
-# Home route
+    plt.figure(figsize=(8, 6))
+    plt.plot(fpr, tpr, label=f"AUC = {auc:.2f}", color='darkorange')
+    plt.plot([0, 1], [0, 1], linestyle='--', color='gray')
+    plt.xlabel("False Positive Rate")
+    plt.ylabel("True Positive Rate")
+    plt.title("ROC Curve")
+    plt.legend(loc="lower right")
+    if not os.path.exists("static"):
+        os.makedirs("static")
+    plt.savefig("static/roc_curve.png")
+    plt.close()
+
+# Генерация графиков
+create_plot()
+create_roc_curve()
+
+# Домашняя страница
 @app.route("/")
 def home():
     return render_template("form.html", accuracy=round(accuracy * 100, 2))
 
-# Prediction route
+# Предсказание
 @app.route("/predict", methods=["POST"])
 def predict():
     features = [float(x) for x in request.form.values()]
